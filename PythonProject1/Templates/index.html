@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sudoku Web</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+<script src="/static/script.js"></script>
+    <div class="container">
+        <h1>SUDOKU ONLINE</h1>
+
+        <div class="game-controls">
+            <select id="difficulty">
+                <option value="30">Dễ (30 ô trống)</option>
+                <option value="40" selected>Trung bình (40 ô trống)</option>
+                <option value="50">Khó (50 ô trống)</option>
+                <option value="60">Rất khó (60 ô trống)</option>
+            </select>
+            <button id="new-game">Game mới</button>
+            <button id="hint">Gợi ý</button>
+            <span id="stats">Lỗi: 0 | Gợi ý: 0</span>
+        </div>
+
+        <div class="sudoku-container">
+            <table id="sudoku-board">
+                <!-- Board sẽ được tạo bằng JavaScript -->
+            </table>
+        </div>
+
+        <div class="number-selector">
+            <button class="num-btn" data-num="1">1</button>
+            <button class="num-btn" data-num="2">2</button>
+            <button class="num-btn" data-num="3">3</button>
+            <button class="num-btn" data-num="4">4</button>
+            <button class="num-btn" data-num="5">5</button>
+            <button class="num-btn" data-num="6">6</button>
+            <button class="num-btn" data-num="7">7</button>
+            <button class="num-btn" data-num="8">8</button>
+            <button class="num-btn" data-num="9">9</button>
+            <button id="solve-cell">Giải ô</button>
+        </div>
+
+        <div id="message"></div>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            let selectedCell = null;
+
+            // Khởi tạo bảng
+            function initializeBoard() {
+                $.get('/', function(data) {
+                    updateBoard();
+                });
+            }
+
+            // Cập nhật bảng từ session
+            function updateBoard() {
+                $.getJSON('/', function(data) {
+                    const board = data.game.board;
+                    const original = data.game.original;
+
+                    let html = '';
+                    for (let i = 0; i < 9; i++) {
+                        html += '<tr>';
+                        for (let j = 0; j < 9; j++) {
+                            const cellValue = board[i][j] || '';
+                            const isOriginal = original[i][j] !== 0;
+                            const cellClass = isOriginal ? 'original' :
+                                           (cellValue ? 'user-input' : 'empty');
+
+                            html += `<td class="${cellClass}" data-row="${i}" data-col="${j}">${cellValue}</td>`;
+                        }
+                        html += '</tr>';
+                    }
+
+                    $('#sudoku-board').html(html);
+                    updateStats();
+
+                    // Thêm sự kiện click cho các ô
+                    $('td').click(function() {
+                        $('td').removeClass('selected');
+                        $(this).addClass('selected');
+                        selectedCell = $(this);
+                    });
+                });
+            }
+
+            // Cập nhật thống kê
+            function updateStats() {
+                $.getJSON('/', function(data) {
+                    $('#stats').text(`Lỗi: ${data.game.mistakes} | Gợi ý: ${data.game.hints_used}`);
+                });
+            }
+
+            // Game mới
+            $('#new-game').click(function() {
+            const difficulty = $('#difficulty').val();
+            $.post('/new_game', { difficulty: difficulty }, function(data) {
+            // Cập nhật giao diện sau khi tạo game mới
+            updateBoard(data);
+            $('#message').text('').removeClass('success error');
+            }).fail(function() {
+            alert('Lỗi khi tạo game mới!');
+            });
+            });
+
+            // Gợi ý
+            $('#hint').click(function() {
+                $.post('/get_hint', function(data) {
+                    if (data.success) {
+                        updateBoard();
+                        $('#message').text('Đã gợi ý một ô!').addClass('success').removeClass('error');
+                    } else {
+                        $('#message').text(data.message || 'Không thể gợi ý').addClass('error').removeClass('success');
+                    }
+                });
+            });
+
+            // Chọn số
+            $('.num-btn').click(function() {
+                if (!selectedCell) {
+                    $('#message').text('Vui lòng chọn ô trước').addClass('error').removeClass('success');
+                    return;
+                }
+
+                const num = $(this).data('num');
+                const row = selectedCell.data('row');
+                const col = selectedCell.data('col');
+
+                $.post('/make_move', { row, col, num }, function(data) {
+                    if (data.success) {
+                        updateBoard();
+                        $('#message').text(data.message).addClass('success').removeClass('error');
+
+                        if (data.completed) {
+                            setTimeout(() => {
+                                alert(`Chúc mừng! Bạn đã hoàn thành Sudoku!\nĐiểm: ${data.score}`);
+                            }, 100);
+                        }
+                    } else {
+                        $('#message').text(data.message).addClass('error').removeClass('success');
+                        updateStats();
+                    }
+                });
+            });
+
+            // Giải ô
+            $('#solve-cell').click(function() {
+                if (!selectedCell) {
+                    $('#message').text('Vui lòng chọn ô trước').addClass('error').removeClass('success');
+                    return;
+                }
+
+                const row = selectedCell.data('row');
+                const col = selectedCell.data('col');
+
+                $.post('/solve_cell', { row, col }, function(data) {
+                    if (data.success) {
+                        updateBoard();
+                        $('#message').text('Đã giải ô!').addClass('success').removeClass('error');
+
+                        if (data.completed) {
+                            setTimeout(() => {
+                                alert(`Chúc mừng! Bạn đã hoàn thành Sudoku!\nĐiểm: ${data.score}`);
+                            }, 100);
+                        }
+                    } else {
+                        $('#message').text('Không thể giải ô này').addClass('error').removeClass('success');
+                    }
+                });
+            });
+
+            // Khởi tạo bảng khi tải trang
+            initializeBoard();
+        });
+    </script>
+</body>
+</html>
